@@ -2,6 +2,13 @@
 
 Green Street is the renamed Automated Carbon Bank: a Vite + React commute app with personal session stats, a map, and fixed bottom navigation. UI code is JavaScript/JSX; the existing TypeScript scoring engine is unchanged.
 
+<img width="1864" height="987" alt="image" src="https://github.com/user-attachments/assets/f08fbb94-c137-42d7-9626-34ee087347e1" />
+<img width="1864" height="987" alt="image" src="https://github.com/user-attachments/assets/79d95842-91f4-441a-b869-6c760aadaccd" />
+<img width="1864" height="987" alt="image" src="https://github.com/user-attachments/assets/f83817ec-f2c5-47e4-a34c-00bf48286cc4" />
+<img width="1864" height="987" alt="image" src="https://github.com/user-attachments/assets/5bf222e7-05d9-47d7-96c3-59ccc58af549" />
+<img width="1864" height="987" alt="image" src="https://github.com/user-attachments/assets/0111797e-9124-48a6-81fb-8c7b386fb8c0" />
+
+
 ## Interface
 
 The app opens on **Commute**, with your session balance, completed trips, earned credits and estimated emissions above the map. Bottom navigation opens **Activity**, **Leaderboard**, and **Company** as separate views. Views stay mounted, preserving the chosen address, live routes, selection, sort order, balance, receipts, and each view's scroll position when navigating.
