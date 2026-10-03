@@ -3,6 +3,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
+import { resetMockCompanyDb } from '../data';
 
 vi.mock('./config', () => ({ MAPS_API_KEY: 'test-key', OFFICE_ADDRESS: '20 Fenchurch Street, London EC3M 3BY' }));
 vi.mock('./GoogleMapPanel', () => ({
@@ -15,6 +16,11 @@ vi.mock('./GoogleMapPanel', () => ({
 let host, root, computeRoutes;
 const buttons = text => [...host.querySelectorAll('button')].filter(b => b.textContent.includes(text));
 const click = async element => { await act(async () => element.click()); };
+const changeShare = async share => {
+  await click(host.querySelector('#nav-company'));
+  await click(buttons(`${share}% car`)[0]);
+  await click(host.querySelector('#nav-commute'));
+};
 const balance = () => host.querySelector('.tabular-nums').textContent;
 const card = label => host.querySelector(`article[aria-label="${label} route"]`);
 const routeData = (metres = 10000) => ({ distanceMeters: metres, durationMillis: 900000, path: [{ lat: 51.51, lng: -0.1 }, { lat: 51.52, lng: -0.11 }] });
@@ -28,6 +34,7 @@ beforeEach(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-03T08:00:00Z'));
+  resetMockCompanyDb();
   host = document.createElement('div'); document.body.append(host);
   computeRoutes = vi.fn(async request => request.travelMode === 'TRANSIT' ? { routes: [] } : { routes: [routeData()] });
   window.google = { maps: { importLibrary: vi.fn(async () => ({ Route: { computeRoutes } })) } };
@@ -37,6 +44,25 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); delete window.google; });
 
 describe('planner UI and protected finance integration', () => {
+  it('preserves resolved live routes, selection and click-time rates across the new screen navigation', async () => {
+    await find();
+    await click(card('Cycle').querySelector('button'));
+    const selected = host.querySelector('output').dataset.path;
+    await click(host.querySelector('#nav-leaderboard'));
+    expect(host.querySelector('#screen-commute').hidden).toBe(true);
+    await changeShare(65);
+    expect(host.querySelector('#screen-commute').hidden).toBe(false);
+    expect(host.querySelector('output').dataset.path).toBe(selected);
+    expect(card('Car').textContent).toContain('-6.25 credits');
+    expect(computeRoutes).toHaveBeenCalledTimes(4);
+    await click([...card('Car').querySelectorAll('button')].find(b => b.textContent.includes('Simulate')));
+    await changeShare(85);
+    await click(host.querySelector('#nav-activity'));
+    await act(async () => vi.advanceTimersByTime(300));
+    expect(balance()).toBe('93.75');
+    expect(host.querySelector('[aria-label="Activity ledger"]').textContent).toContain('Adjusted (1.25x)');
+    expect(computeRoutes).toHaveBeenCalledTimes(4);
+  });
   it('sorts cards and summary in both directions without fetching, completing, or changing selection', async () => {
     await find();
     const sort = host.querySelector('select:has(option[value="credits-asc"])');
@@ -49,7 +75,7 @@ describe('planner UI and protected finance integration', () => {
     expect(host.querySelector('output').dataset.path).toBe(selected);
     expect(balance()).toBe('100.00');
     expect(computeRoutes).toHaveBeenCalledTimes(4);
-    await click(host.querySelectorAll('input[name="rate"]')[1]);
+    await changeShare(85);
     expect(names()[0]).toBe('Car');
     expect(card('Car').textContent).toContain('-7.50 credits');
     expect(computeRoutes).toHaveBeenCalledTimes(4);
@@ -65,7 +91,7 @@ describe('planner UI and protected finance integration', () => {
     expect(host.querySelector('output').dataset.path).not.toBe(oldPath);
     expect(balance()).toBe(before);
     expect(host.textContent).toContain('No trips recorded yet');
-    await click(host.querySelectorAll('input[name="rate"]')[1]);
+    await changeShare(85);
     expect(card('Car').textContent).toContain('-7.50 credits');
     expect(card('Cycle').textContent).toContain('+3.75 credits');
     expect(host.querySelector('tbody').textContent).toContain('-7.50');
@@ -73,10 +99,10 @@ describe('planner UI and protected finance integration', () => {
   });
   it('simulates displayed current score once per flight and preserves receipts and balance through changes', async () => {
     await find();
-    await click(host.querySelectorAll('input[name="rate"]')[1]);
+    await changeShare(85);
     const simulate = [...card('Car').querySelectorAll('button')].find(b => b.textContent.includes('Simulate'));
     await act(async () => { simulate.click(); simulate.click(); });
-    await click(host.querySelectorAll('input[name="rate"]')[0]);
+    await changeShare(40);
     await click(buttons('Use demo routes')[0]);
     await act(async () => vi.advanceTimersByTime(300));
     expect(balance()).toBe('92.50');

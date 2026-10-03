@@ -4,6 +4,7 @@
  */
 
 import { COMPANY_POLICY } from './companyPolicy.js';
+import { scoreTrip, DEFAULT_RATES } from '../engine/scoring';
 
 // ============================================================================
 // Deterministic pseudo-random generation for reproducible data
@@ -194,12 +195,52 @@ function generateCommuteRecords(employees, days = 22) {
 let employees = generateEmployees();
 let commuteRecords = generateCommuteRecords(employees);
 let listeners = new Set();
+let snapshot;
+
+// Employee summaries belong to this database, not to the dashboard. Historical
+// mock commutes use base rates; publishing a next-day quote never reprices them.
+function refreshSnapshot() {
+  const totals = new Map(employees.map(employee => [employee.id, {
+    tripsCompleted: 0, activeKm: 0, emissionsKg: 0,
+    highCarbonTrips: 0, monthlyCreditDelta: 0, streak: 0,
+  }]));
+  const completed = commuteRecords.filter(record => record.completed !== false)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  for (const record of completed) {
+    const total = totals.get(record.employeeId);
+    if (!total) continue;
+    const score = scoreTrip([{ mode: record.mode, distanceKm: record.distanceKm }], DEFAULT_RATES);
+    const highCarbon = record.mode === HIGH_CARBON_MODE;
+    total.tripsCompleted += 1;
+    total.activeKm += record.mode === 'walk' || record.mode === 'cycle' ? record.distanceKm : 0;
+    total.emissionsKg += score.emissionsKg;
+    total.highCarbonTrips += highCarbon ? 1 : 0;
+    total.monthlyCreditDelta += score.creditDelta;
+    // Consecutive completed non-car commutes, ending at the most recent trip.
+    total.streak = highCarbon ? 0 : total.streak + 1;
+  }
+  employees = employees.map(employee => {
+    const total = totals.get(employee.id);
+    const monthlyCreditDelta = Math.round(total.monthlyCreditDelta * 100) / 100;
+    return { ...employee, ...total, monthlyCreditDelta,
+      monthlyBalance: Math.round((100 + monthlyCreditDelta) * 100) / 100,
+      activeKm: Math.round(total.activeKm * 10) / 10,
+      emissionsKg: Math.round(total.emissionsKg * 1000) / 1000 };
+  });
+  // Stable between mutations for React.useSyncExternalStore. Mutations replace
+  // records and employee objects so previously published snapshots stay intact.
+  snapshot = Object.freeze({ employees: Object.freeze([...employees]),
+    commuteRecords: Object.freeze([...commuteRecords]), timestamp: Date.now() });
+}
+
+refreshSnapshot();
 
 // ============================================================================
 // Pub/Sub mechanism
 // ============================================================================
 
 function notify() {
+  refreshSnapshot();
   const snapshot = getCompanySnapshot();
   for (const listener of listeners) {
     try {
@@ -226,11 +267,7 @@ export function subscribeCompanyDb(listener) {
 // ============================================================================
 
 export function getCompanySnapshot() {
-  return {
-    employees: [...employees],
-    commuteRecords: [...commuteRecords],
-    timestamp: Date.now(),
-  };
+  return snapshot;
 }
 
 export function resetMockCompanyDb() {
@@ -249,7 +286,13 @@ export function updateCommuteRecord(recordId, patch) {
   if (index === -1) {
     throw new Error(`Commute record not found: ${recordId}`);
   }
-  commuteRecords[index] = { ...commuteRecords[index], ...patch };
+  const updated = { ...commuteRecords[index], ...patch };
+  // Validate before committing so an invalid edit cannot poison the store or
+  // leave the published snapshot behind its internal records.
+  scoreTrip([{ mode: updated.mode, distanceKm: updated.distanceKm }], DEFAULT_RATES);
+  if (!employees.some(employee => employee.id === updated.employeeId)) throw new Error('Unknown employee');
+  if (typeof updated.date !== 'string') throw new Error('Commute date must be a string');
+  commuteRecords[index] = { ...updated, isHighCarbon: updated.mode === HIGH_CARBON_MODE };
   notify();
 }
 
@@ -278,18 +321,20 @@ export function bulkSetCommuteShare({ mode, share, day }) {
   if (!MODES.includes(mode)) {
     throw new Error(`Invalid mode: ${mode}. Must be one of: ${MODES.join(', ')}`);
   }
-  if (share < 0 || share > 1) {
+  if (typeof share !== 'number' || !Number.isFinite(share) || share < 0 || share > 1) {
     throw new Error('Share must be between 0 and 1');
   }
 
-  // Filter records for the specified day
-  const dayRecords = commuteRecords.filter(r => r.date === day);
+  // Omit day to change the same company-wide completed-record window used by
+  // selectors. Keep the existing day-specific mutation available to callers.
+  const dayRecords = commuteRecords.filter(r => r.completed !== false && (day === undefined || r.date === day));
   if (dayRecords.length === 0) {
     throw new Error(`No commute records found for day: ${day}`);
   }
 
   const targetCount = Math.round(dayRecords.length * share);
   const shuffled = shuffleArray([...dayRecords]);
+  const updates = new Map();
 
   for (let i = 0; i < dayRecords.length; i++) {
     const record = shuffled[i];
@@ -298,18 +343,24 @@ export function bulkSetCommuteShare({ mode, share, day }) {
     const distanceKm = randomFloat(distRange.min, distRange.max, 2);
     const isHighCarbon = newMode === HIGH_CARBON_MODE;
 
-    const idx = commuteRecords.findIndex(r => r.id === record.id);
-    if (idx !== -1) {
-      commuteRecords[idx] = {
-        ...commuteRecords[idx],
-        mode: newMode,
-        distanceKm,
-        isHighCarbon,
-      };
-    }
+    updates.set(record.id, { ...record, mode: newMode, distanceKm, isHighCarbon });
   }
+  commuteRecords = commuteRecords.map(record => updates.get(record.id) || record);
   notify();
 }
+
+// ============================================================================
+// Database object export (for convenience)
+// ============================================================================
+
+export const mockCompanyDb = {
+  subscribe: subscribeCompanyDb,
+  getSnapshot: getCompanySnapshot,
+  updateRecord: updateCommuteRecord,
+  setMode: setCommuteMode,
+  bulkSetShare: bulkSetCommuteShare,
+  reset: resetMockCompanyDb,
+};
 
 // ============================================================================
 // Expose internal state for testing (not for production use)

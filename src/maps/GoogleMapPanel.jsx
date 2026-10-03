@@ -66,20 +66,20 @@ function AuthWatch({ onError }) {
 }
 
 export function LiveMap({ onError, children }) {
-  return <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0" role="region" aria-label="Commute route map">
+  return <div className="live-map" role="region" aria-label="Commute route map">
     <AuthWatch onError={onError} />
-    <div className="h-[340px] sm:h-[460px] lg:h-[540px]">
+    <div className="live-map-viewport">
       <Map defaultCenter={LONDON_CENTER} defaultZoom={11} gestureHandling="cooperative" mapTypeControl={false} streetViewControl={false}>
         <Marker position={OFFICE_POSITION} title="Office: 2½ Devonshire Square, London EC2M 4UJ"
           icon="https://maps.google.com/mapfiles/ms/icons/red-dot.png" />
         {children}
       </Map>
     </div>
-    <p className="p-3 text-sm text-gray-600">Select “View route” to highlight a path. Planning does not verify travel.</p>
+    <p className="live-map-helper">Select “View route” to highlight a path. Planning does not verify travel.</p>
   </div>;
 }
 
-export function RoutePaths({ routes, selectedId, onSelect }) {
+export function RoutePaths({ routes, selectedId, onSelect, active = true }) {
   const map = useMap();
   React.useEffect(() => {
     if (!map) return;
@@ -98,6 +98,6 @@ export function RoutePaths({ routes, selectedId, onSelect }) {
       map.fitBounds(bounds, 48);
     }
     return () => paths.forEach(({ path, listener }) => { listener.remove(); path.setMap(null); });
-  }, [map, routes, selectedId, onSelect]);
+  }, [map, routes, selectedId, onSelect, active]);
   return null;
 }

@@ -1,6 +1,14 @@
-# Automated Carbon Bank
+# Green Street
 
-Vite + React dashboard with an authored fixture demo and an optional Google Maps commute planner. New integration code is JavaScript/JSX; the existing TypeScript scoring engine is unchanged.
+Green Street is the renamed Automated Carbon Bank: a Vite + React commute app with personal session stats, a map, and fixed bottom navigation. UI code is JavaScript/JSX; the existing TypeScript scoring engine is unchanged.
+
+## Interface
+
+The app opens on **Commute**, with your session balance, completed trips, earned credits and estimated emissions above the map. Bottom navigation opens **Activity**, **Leaderboard**, and **Company** as separate views. Views stay mounted, preserving the chosen address, live routes, selection, sort order, balance, receipts, and each view's scroll position when navigating.
+
+Demo shows an authored London illustration labeled as a preview, with no fabricated route geometry or GPS location. Live uses the existing Google Maps planner. Desktop places route choices beside the map; phones show them beneath the map in a horizontal list. Journey details and the comparison table expand on demand. The leaderboard has a podium, employee/department views, and responsive employee rows.
+
+Typography uses a locally served Manrope font with its OFL license in `public/fonts/`. The app uses authored SVG icons, a warm-white background, forest green, and lime accents, with reduced-motion and keyboard-focus styles. No font service or additional UI runtime dependency is required.
 
 ## Run locally
 
@@ -13,6 +21,16 @@ npm run preview
 ```
 
 The default Demo mode works without credentials. Balances and receipts live in React memory; refreshing the page resets the session.
+
+## Mock company dashboard and rates
+
+The firm-wide dashboard, employee/department leaderboard, and route incentives share the in-memory database in `src/data/`. All 247 employee names are generated placeholders. High-carbon share counts completed car commutes, using the existing selectors: rates stay at 1.00× through 50%, increase above 50%, and reach 1.50× at 80% or more. The 78% preset produces 1.47×.
+
+Internal demo buttons set 40%, 50%, 65%, 78%, or 85% car share across the mock completed-commute period via `bulkSetCommuteShare`. A supplied `day` still limits that helper to one day. Changes publish one stable snapshot, recompute employee summaries with the unchanged scoring engine at base historical rates, and update all subscribed UI. Department ranking uses average balance; other department columns show totals. Streak counts consecutive non-car completed commutes.
+
+For the hackathon, the calculated next-day multiplier applies immediately to route estimates. Existing live routes rescore locally without more Google requests; physical emissions and public-transport charges are unchanged by incentive rates. Company edits/reset preserve the personal balance, route selection, and ledger. Simulated receipts retain the rate at click time, including changes during the 300 ms completion delay. The personal simulation ledger is separate from generated company commutes; no employee identity is assigned to simulated trips.
+
+Company records, leaderboard entries, and rates are mock/demo data, with no real company connection or persistence. The old manual rate switch has been replaced by automatic selector-driven rates and company-mix controls.
 
 ## Google Maps setup
 
